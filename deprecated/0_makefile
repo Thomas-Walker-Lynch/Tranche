@@ -1,0 +1,40 @@
+# src/0_makefile
+
+SHELL=/bin/bash
+
+-include 0_makefile_flags
+
+SUID_TOOL=$(TOOLSDIR)/bin/setuid_root.sh
+MAKE=/usr/bin/make -f $(PROJECT_SUBU)/tools/lib/makefile-cc
+
+SOURCES=$(wildcard *.c)
+HFILES=$(wildcard *.h)
+
+all: version deps lib execs
+
+version:
+	$(MAKE) $@
+	@echo "SUID_TOOL: " $(SUID_TOOL)
+
+deps:
+	makeheaders $(SOURCES) $(HFILES)
+	sed -i '/^ *int *main *(.*)/d' *.h
+	$(MAKE) $@
+
+execs:
+	$(MAKE) $@
+	@echo "-> $(SUID_TOOL) $(EXECSDIR)/subu-mk-0 $(EXECSDIR)/subu-rm-0 $(EXECSDIR)/subu-bind-all"
+	cat $(SUID_TOOL)
+	@echo -n "Are you sure? [y/N] " && read ans && [ $${ans:-N} == y ]
+	sudo $(SUID_TOOL) $(EXECSDIR)/subu-mk-0 $(EXECSDIR)/subu-rm-0 $(EXECSDIR)/subu-bind-all
+
+clean:
+	$(MAKE) $@
+	for i in $(HFILES); do rm $$i; done
+
+%::
+	$(MAKE) $@
+
+
+
+

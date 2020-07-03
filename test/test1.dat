@@ -1,0 +1,23 @@
+
+#tranche test11.dat test12.dat
+The little red hen said to Mick, no thank you not today sir.
+And then all the barnes animals shouted out in glee.
+No more misery!
+#tranche test13.dat
+apple banana pear
+kiwi
+#tranche-end
+cows
+and cats
+#tranche-end
+
+the between space
+
+#tranche test14.dat
+int float if while
+do
+function
+#tranche-end
+
+#tranche test15.dat
+#tranche-end

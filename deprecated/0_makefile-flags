@@ -1,0 +1,31 @@
+
+# some versions of Linux need a -e option others complain if there is a -e .. and it isn't the binary for echo ..
+ECHO= echo
+#ECHO= echo -e
+
+# directories used by this makefile, these could all be set to dot for
+# the simplest source directory structure
+
+#LIDBIR, EXECSDIR, HDIR hold the make results that might later be shared
+#$(PWD) is the directory that make was called from, this is already build in
+#set to dot to use the same directory as the source code
+#leave blank to ommit
+DEPRDIR=1_deprecated
+DOCDIR=1_doc
+EXECSDIR=1_execs
+HDIR=1_headers
+LIBDIR=1_lib
+TESTDIR=1_tests
+TMPDIR=1_tmp
+TOOLSDIR=$(realpath $(PROJECT_SUBU)/tools)
+TRYDIR=1_try
+
+
+# compiler and flags
+CC=gcc
+CFLAGS=-std=gnu11 -fPIC -I. -ggdb -Werror -DDEBUG -DDEBUGDB 
+#CFLAGS=-std=gnu11 -fPIC -I. -Werror
+LINKFLAGS=-L1_lib -lsubu -lsqlite3
+
+LIBFILE=$(LIBDIR)/libsubu.a
+

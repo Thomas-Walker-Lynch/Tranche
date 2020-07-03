@@ -1,0 +1,18 @@
+
+MAKE=/usr/bin/make --no-print-directory -f $(PHOME)/project/makefile-cc
+#MAKE=/usr/bin/make -f $(PHOME)/project/makefile-cc
+
+MODULE=tranche
+SHAREDIR=$(PHOME)/env
+DEPFILE=$(TMPDIR)/makefile-cc.deps
+LIBFILE=$(LIBDIR)/lib$(MODULE).a
+INCFILE=$(INCDIR)/$(MODULE).h
+
+# some versions of Linux need a -e option others complain if there is a -e .. and it isn't the binary for echo ..
+ECHO= echo
+#ECHO= echo -e
+
+C=gcc
+CFLAGS=-std=gnu11 -fPIC -I$(SRCDIR) -I$(INCDIR) -I$(ENVDIR)/include -ggdb -Werror -DDEBUG -DDEBUGDB 
+LINKFLAGS=-L$(LIBDIR) -L$(ENVDIR)/lib/ -l$(MODULE) -lTM2x
+

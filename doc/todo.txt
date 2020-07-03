@@ -1,0 +1,11 @@
+
+2019-03-22T13:37:23Z
+1. indentation
+
+   the first non blank line after the #tranche keyword sets the indentation
+   level for the following text.  When echoing to the output file 
+   remove that many leading spaces.
+
+   Hmm,  or allow options among the tranche parameters,  -indent 3 or
+   -indent '  '.
+   

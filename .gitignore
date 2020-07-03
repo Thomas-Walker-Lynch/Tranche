@@ -1,0 +1,6 @@
+
+tmp/
+.*
+!.gitignore
+*~
+*.o
