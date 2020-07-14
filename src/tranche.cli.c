@@ -31,10 +31,6 @@ the same file as one already open in the containing tranche ..
 #include <TM2xHd.h>
 #include "tranche.lib.h"
 
-static inline bool is_option(char **pt){
-  return *pt == '-';
-}
-
 /*
 UNIX standard arguments for C:
  -> The arguments array has elements that are string pointers.  Each such element is an 'argument value'.
@@ -44,28 +40,28 @@ UNIX standard arguments for C:
     increment the argument pointer to the next argument value.  This a pointer to an argument pointer
     and has type char ***.
 
-Command line convnetion:
+Command line convention:
 -> an option has the form  -<option_name> <value>*
    The '-<option_name>' is a single argument value starting with the character '-'.  
    Each successive option <value> is another argument value.
    We know how many values there are based on the option_name.
 
--> pt passed in here is a pointer to an argument pointer. Hence, *pt is an argument
-   pointer, and **pt is an argument value.  ***pt is the first character in the argument
+-> ppt passed in here is a pointer to an argument pointer. Hence, *ppt is an argument
+   pointer, and **ppt is an argument value.  ***ppt is the first character in the argument
    value.
 
--> This routine is only called when ***pt is a '-' character.  If an option has no values,
-   we leave with *pt unmodified.  If an option has values, we leave with *pt pointing at
+-> This routine is only called when ***ppt is a '-' character.  If an option has no values,
+   we leave with *ppt unmodified.  If an option has values, we leave with *ppt pointing at
    the last value.
 
 */
-void process_option(char ***pt ,int *err ,char **tdir){
+void process_option(char ***ppt ,int *err ,char **tdir){
 
   //--------------------
-  // option name
+  // categorize options by type, in this case, just the number of values it takes
   //
     // the option string is the part that comes after the '-' in the arg value: "-<option_name>"
-    char *option_name = **pt + 1;
+    char *option_name = **ppt + 1;
     if(!*option_name){ // *option_name is the first character of the option_name
       fprintf(stderr, "Currently there is no lone '-' option.\n");
       *err |= TRANCHE_ERR_ARG_PARSE;
@@ -87,12 +83,12 @@ void process_option(char ***pt ,int *err ,char **tdir){
      
   //--------------------
   // values
-  //    this program only has single value options
+  //    option_0 is form: -option.  option_1 is form: -option value.  No other forms for this program...
   //
     char *value;
     if( option_1 ){
-      value = *(*pt + 1);
-      if(!value || value == '-'){
+      value = *(*ppt + 1);
+      if(!value || *value == '-'){
         fprintf(stderr, "Missing value for option '%s'.\n", option_name);
         *err |= TRANCHE_ERR_ARG_PARSE;
         return;
@@ -100,7 +96,7 @@ void process_option(char ***pt ,int *err ,char **tdir){
     }
 
   //--------------------
-  // process
+  // process the option
   //
     if( option_0 ){
       if( !strcmp(option_name, "h") || !strcmp(option_name, "help") ){
@@ -109,65 +105,109 @@ void process_option(char ***pt ,int *err ,char **tdir){
       return;
     }
     if( option_1 ){
-      if( !strcmp(option, "tdir") ){
+      if( !strcmp(option_name, "tdir") ){
         *tdir = value;
       }
-      (*pt)++;
+      (*ppt)++;
       return;
     }
 
-    fprintf(stderr, "Argument parsing internal errror\n");
+    // in theory at least, we can't get here
+    fprintf(stderr, "Argument parsing internal error\n");
     *err |= TRANCHE_ERR_ARG_PARSE;
     return;
 
 }
 
+// anything that starts with a '-' is taken as an option, everything else is a source file name
+static inline bool is_option(char **pt){
+  return **pt == '-';
+}
+
 int main(int argc, char **argv, char **envp){
   int err = 0;
   char *tdir = 0;  
-  bool found_first = false; // found a source file argument
-  TM2x_Make(srcs ,0 ,char *);
-  { // the command line is an arbitrary mix of arguments and options.  
-    char **pt = argv + 1; // skip the command name
-    while(*pt){
-      if(found_first = !is_option(pt)) break;
-      process_option(&pt ,&err ,tdir);
-      pt++;
-    }
-    if( *pt ){ 
-      TM2x_write(srcs ,0 ,*pt);
-      // extend
-      while(*++pt){
-        if( is_option(pt) ) process_option(&pt ,&err ,tdir);
-        else TM2x_Push_Write_Not_Exists(srcs ,*pt ,TM2xHd_pred_cstring_eq);
-      }
-      break;
-    }
-    if(err){
-      fprintf(stderr, "usage: %s [<src_file_path>].. [-tdir <dir>]\n", argv[0]);
-      return err;
-    }
-  }// end of argument parse
+  TM2x·AllocStatic(srcs); // srcs is a list of source file names
 
-  
-  TM2x_Make_Write(targets ,STDOUT_FILENO);
-  if(!found_first) 
-    tranche_send(stdin ,targets ,tdir);
-  else{
-    TM2xHd_Make(srcs ,src);
-    do{
-      src_file = fopen(TM2xHd_Read_Expr(src), "r");
-      if(!src_file){
-        fprintf(stderr,"Could not open source file %s.\n", TM2xHd_Read_Expr(src));
-        err |= TRANCHE_ERR_SRC_OPEN;
-      }else{
-        tranche_send(src_file ,targets ,tdir);
-        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
-      }
-    }while( TM2xHd_step(srcs ,src ,byte_n_of(char *)) );
-  }
+  // points to the array of arguments
+  char **pt = argv; 
+  char *command_name = *pt;
 
-  TM2x_dealloc_static(srcs);
-  TM2x_dealloc_static(targets);
-  return err;
+  // What to do when a source file name is found (collect it on the source file list).
+  // This will be either &&init or &&extend.
+  continuation do_write = &&init; 
+
+  next:;
+    pt++;
+    if(*pt)
+      continue_from_local source_fname_or_option_q;
+    if( do_write == &&init )
+      continue_from_local process_no_sources;
+    if( err )
+      continue_from_local arg_errors;
+    continue_from_local process_sources;
+
+  source_fname_or_option_q:;
+    if( is_option(pt) ){
+      process_option(&pt ,&err ,&tdir);
+      continue_from_local next;
+    }else{
+      continue_from_local *do_write;
+    }
+
+  init:;
+    continue_into TM2x·format_write(srcs ,pt ,byte_n_of(char *) ,&&init·nominal ,&&alloc_fail);
+      init·nominal:;
+        do_write = &&extend;
+        continue_from_local next;
+
+  extend:;
+        continue_into TM2x·push_write(srcs ,pt ,byte_n_of(char *) ,&&init·nominal ,&&alloc_fail);
+      ( srcs 
+        ,*pt 
+        ,byte_n_of(char *)
+        ,TM2xHd·pred_cstring_eq
+        ,&&next
+        ,&&next
+        ,&&alloc_fail
+        );
+
+  process_no_sources:;
+    //fprintf(stderr,"sending stdin \n");
+    tranche_send(stdin ,tdir);
+    return 0;
+
+  process_sources:;
+    { continuations read ,next ,end_of_list;
+      FILE *src_file;
+      TM2xHd·AllocStaticRewind(srcs ,src);
+
+      read:;
+        src_file = fopen(TM2xHd·Read_Expr(src ,char*) ,"r");
+        if(!src_file){
+          fprintf(stderr,"Could not open source file %s.\n" ,TM2xHd·Read_Expr(src ,char*));
+          err |= TRANCHE_ERR_SRC_OPEN;
+        }else{
+          //fprintf(stderr,"sending %s\n" ,TM2xHd·Read_Expr(src ,char*) );
+          tranche_send(src_file ,tdir);
+          if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
+        }
+        continue_from_local next;;
+
+      next:;
+        continue_into TM2xHd·step(srcs ,src ,byte_n_of(char *) ,&&read ,&&end_of_list);
+
+      end_of_list:;
+        TM2x·dealloc_static(srcs);
+        return err;
+    }
+
+  arg_errors:;
+    fprintf(stderr, "usage: %s [<src_file_path>].. [-tdir <dir>]\n", command_name);
+    return err;
+
+  alloc_fail:;
+     // already out of memory? no sense in trying to print an error mess
+     return TRANCHE_ERR_MEM;
+
 }

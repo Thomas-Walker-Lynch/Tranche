@@ -1,5 +1,4 @@
 
-#include <da.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <ctype.h>
@@ -7,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <TM2xHd.h>
 
 //--------------------------------------------------------------------------------
 // parsing
@@ -18,29 +18,29 @@ char newline = '\n';
 char tab = '\t';
 char terminator = 0;
 
-
 char tranche_begin_tag[] = "#tranche";
-size_t tranche_begin_tag_len = 8;
+size_t tranche_begin_tag_byte_n = 7;
 
 char tranche_end_tag[] = "#tranche-end";
-size_t tranche_end_tag_len = 12;
+size_t tranche_end_tag_byte_n = 11;
+
+#if 0
 
 // given a line
 // returns beginning of file name list
 static char *is_tranche_begin(char *pt){
-  while( *pt && isspace(*pt) ) pt++;
-  if(!*pt) return NULL;
-  if( strncmp(pt, tranche_begin_tag, tranche_begin_tag_len) ) return NULL;
-  return pt + tranche_begin_tag_len;
+  while( *pt && isspace(*pt) ) pt++; if( !*pt ) return NULL;
+  if( strncmpn(pt, tranche_begin_tag, tranche_begin_tag_byte_n) ) return NULL;
+  return pt + tranche_begin_tag_byte_n + 1;
 }
 
 static char *is_tranche_end(char *pt){
-  while( *pt && isspace(*pt) ) pt++;
-  if(!*pt) return NULL;
-  if( strncmp(pt, tranche_end_tag, tranche_end_tag_len) ) return NULL;
-  return pt + tranche_end_tag_len;
+  while( *pt && isspace(*pt) ) pt++; if( !*pt ) return NULL;
+  if( strncmpn(pt, tranche_end_tag, tranche_end_tag_byte_n) ) return NULL;
+  return pt + tranche_end_tag_byte_n + 1;
 }
 
+// adds a file name to the file_names list
 static void parse_file_list(Da *file_names, char *pt, char *tdir){
   Da filename_arr;
   Da *fn_arrp = &filename_arr;
@@ -67,6 +67,9 @@ static void parse_file_list(Da *file_names, char *pt, char *tdir){
 //--------------------------------------------------------------------------------
 // da_map calls
 
+// closure is a list of file descriptors.
+// fnp is a pointer to a file name.
+// opens fnp and pushes its fd on to the file descriptors list
 static void tranche_open_fd(void *fnp, void *closure){
   char *file_name = *(char **)fnp;
   Da *fdap = (Da *)closure;
@@ -78,6 +81,7 @@ static void tranche_open_fd(void *fnp, void *closure){
   da_push(fdap, &fd);  
   return;
 }
+// takes a list of file names, turns it into a list of file descriptors
 static void tranche_open_fds(Da *fnap, Da *fdap){
   da_map(fnap, tranche_open_fd, fdap);
 }
@@ -236,3 +240,4 @@ void tranche_make(FILE *src_file, char *src_name, int mfile_fd, char *tdir){
   da_free(mlsp);
   return;
 }
+#endif

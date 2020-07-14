@@ -6,11 +6,10 @@ were also listed if anything is sent to stdout. Might distinguish
 between blank lines being sent and text being sent to stdout.
 
 */
-  
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include <da.h>
+//#include <da.h>
 #include "tranche.lib.h"
 
 #define ERR_ARGC 1
@@ -18,6 +17,8 @@ between blank lines being sent and text being sent to stdout.
 
 
 int main(int argc, char **argv, char **envp){
+#if 0
+  
 
   int err = 0;
   char *sep = 0;
@@ -114,4 +115,6 @@ int main(int argc, char **argv, char **envp){
   da_free_elements(target_arrp);
   da_free(target_arrp);
   return err;
+
+#endif
 }

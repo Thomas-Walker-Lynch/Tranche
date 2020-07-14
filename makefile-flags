@@ -3,7 +3,7 @@ MAKE=/usr/bin/make --no-print-directory -f $(PHOME)/project/makefile-cc
 #MAKE=/usr/bin/make -f $(PHOME)/project/makefile-cc
 
 MODULE=tranche
-SHAREDIR=$(PHOME)/env
+ENVDIR=$(PHOME)/env
 DEPFILE=$(TMPDIR)/makefile-cc.deps
 LIBFILE=$(LIBDIR)/lib$(MODULE).a
 INCFILE=$(INCDIR)/$(MODULE).h
@@ -13,6 +13,6 @@ ECHO= echo
 #ECHO= echo -e
 
 C=gcc
-CFLAGS=-std=gnu11 -fPIC -I$(SRCDIR) -I$(INCDIR) -I$(ENVDIR)/include -ggdb -Werror -DDEBUG -DDEBUGDB 
+CFLAGS=-std=gnu18 -I$(SRCDIR) -I$(INCDIR) -I$(ENVDIR)/include -ggdb -Werror -DDEBUG -DDEBUGDB 
 LINKFLAGS=-L$(LIBDIR) -L$(ENVDIR)/lib/ -l$(MODULE) -lTM2x
 

@@ -26,7 +26,7 @@ user does not want this behavior, give a value of "." for -sdir.
 .. should modify this to allow multiple source files on the command line ..
 .. should check that tdir is an existing directory
 */
-  
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -37,6 +37,7 @@ user does not want this behavior, give a value of "." for -sdir.
 #include "tranche.lib.h"
 
 int main(int argc, char **argv, char **envp){
+#if 0
 
   int err = 0;
   char *sname = 0;
@@ -152,4 +153,6 @@ int main(int argc, char **argv, char **envp){
     err |= TRANCHE_ERR_FCLOSE;
   }
   return err;
+
+#endif
 }
