@@ -140,29 +140,29 @@ int main(int argc, char **argv, char **envp){
   next:;
     pt++;
     if(*pt)
-      continue_from_local source_fname_or_option_q;
+      continue_from source_fname_or_option_q;
     if( do_write == &&init )
-      continue_from_local process_no_sources;
+      continue_from process_no_sources;
     if( err )
-      continue_from_local arg_errors;
-    continue_from_local process_sources;
+      continue_from arg_errors;
+    continue_from process_sources;
 
   source_fname_or_option_q:;
     if( is_option(pt) ){
       process_option(&pt ,&err ,&tdir);
-      continue_from_local next;
+      continue_from next;
     }else{
-      continue_from_local *do_write;
+      continue_from *do_write;
     }
 
   init:;
     continue_into TM2x·format_write(srcs ,pt ,byte_n_of(char *) ,&&init·nominal ,&&alloc_fail);
       init·nominal:;
         do_write = &&extend;
-        continue_from_local next;
+        continue_from next;
 
   extend:;
-        continue_into TM2x·push_write(srcs ,pt ,byte_n_of(char *) ,&&init·nominal ,&&alloc_fail);
+    continue_into TM2x·push(srcs ,pt ,byte_n_of(char *) ,&&next ,&&alloc_fail);
       ( srcs 
         ,*pt 
         ,byte_n_of(char *)
@@ -192,7 +192,7 @@ int main(int argc, char **argv, char **envp){
           tranche_send(src_file ,tdir);
           if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
         }
-        continue_from_local next;;
+        continue_from next;;
 
       next:;
         continue_into TM2xHd·step(srcs ,src ,byte_n_of(char *) ,&&read ,&&end_of_list);
