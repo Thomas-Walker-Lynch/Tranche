@@ -26,11 +26,14 @@ char terminator = 0;
 char tranche_begin_tag[] = "#tranche";
 char tranche_end_tag[] = "#tranche-end";
 
-bool notblank(char *pt){
-  return !isblank(pt);
+bool not_blank(char *pt){
+  return !isblank(*pt);
+}
+bool is_blank(char *pt){
+  return isblank(*pt);
 }
 
-char *is(char *pt , bool pred(char *) ){
+char *is(char *pt ,bool pred(char *pt) ){
   while( *pt && pred(pt) ) pt++;
   return pt;
 }
@@ -41,71 +44,75 @@ static char *is_token(char *pt ,char *token){
   else
     return pt + strlen(token);
 }
-#if 0
 
 // parses a cstring and makes a list of file names
 //     cstring:  (blank* <filename>)*
 //     filename: non-blank+
 //
-static void parse_file_list
+static continuation parse_file_list
 ( TM2x *list
   ,char *pt0
   ,char *tdir 
-  ,continuation nomimal 
+  ,continuation nominal 
   ,continuation not_found
-  ,continatuation alloc_fail
+  ,continuation fail
   ){
 
   char *pt1;
   TM2x·AllocStatic(filename);
   address_t filename_n;
-  continuation cont_filename_not_found = not_found;
+  continuation list_write = &&list_init;
+  continue_from run;
 
-  scan_filename_args.nominal = &&init_filename;
-  scan_filename_args.not_found = not_found;
+  {
+    filename_scan:;
+      struct{
+        continuation nominal;
+        continuation not_found; 
+      }filename_scan_args;
+      pt0 = is(pt0 ,is_blank);
+      pt1 = is(pt0 ,not_blank);
+      if( pt0 == pt1 ) continue_via_trampoline filename_scan_args.not_found;
+      filename_n = pt1 - pt0 - 1;
+      continue_from *filename_scan_args.nominal;
 
-  scan_filename:;
-    struct{
-      continuation nominal;
-      continuation not_found; 
-    }scan_filename_args;
-    pt0 = is(pt0 ,blank);
-    pt1 = is(pt0 ,notblank);
-    if( pt0 == pt1 ) continue_via_trampoline scan_filename_args.not_found;
-    filename_n = pt1 - pt0 - 1;
-    continue_from scan_filename_args.nominal;
+    filename_init:;
+      filename_scan_args.nominal = &&filename_rewrite;
+      continue_into TM2x·format_write_bytes(filename ,pt0 ,filename_n ,list_write ,&&fail_local);
 
-  init_filename:;
-    continue_into TM2x·format_write( filename ,pt0 ,filename_n ,&&init_list ,&&alloc_fail_local);
+    filename_rewrite:;
+      { __label__ nominal;
+        continue_into TM2x·resize_bytes(filename ,filename_n ,&&nominal ,&&fail_local);
+          nominal:;
+            continue_into TM2x·write_bytes(pt0 ,filename ,0 ,filename_n ,list_write ,&&fail_local ,&&fail_local ,&&fail_local);
+      }
 
-  init_filename_gain:;
+    list_init:;
+      list_write = &&list_extend;
+      filename_scan_args.not_found = nominal;
+      continue_into TM2x·format_write( list ,filename ,byte_n_of(TM2x) ,&&next ,&&fail_local);
 
-  init:;
-    scan_filename_args.nominal = &&extend;
-    scan_filename_args.not_found = nominal;
-    continue_into TM2x·format_write( filename ,pt0 ,filename_n ,&&init_filename_array ,&&alloc_fail_local);
-    init_filename_array:;
-      continue_into TM2x·format_write( filename_array ,filename ,byte_n_of(TM2x) ,&&next ,&&alloc_fail_local);
+    list_extend:;
+      continue_into TM2x·push( list ,filename ,byte_n_of(TM2x) ,&&next ,&&fail_local);
 
-  extend:;
-.. rewind filename buffer.., but what makes it longer if need be?  dealloc and rewrite - inefficient
-need to see if it fits the current alloctaion, and if so, to rewrite, otherwise dealloc and write
-    continue_into TM2x·push_write( filename ,pt0 ,filename_n ,&&init_filename_array ,&&alloc_fail_local);
-    init_filename_array:;
-      continue_into TM2x·push_write( filename_array ,filename ,byte_n_of(TM2x) ,&&next ,&&alloc_fail_local);
-    
-  next:;
-    pt0 = pt1;
-    continue_from scan_filename;
+    next:;
+      pt0 = pt1;
+      continue_from filename_scan;
 
-  alloc_fail_local:;
-    continue_via_trampoline alloc_fail;
+    fail_local:;
+      continue_via_trampoline fail;
+
+    run:;
+      filename_scan_args.nominal = &&filename_init;
+      filename_scan_args.not_found = not_found;
+      continue_from filename_scan;
+  }
+
 
 }
-#endif
+
 
 #if 0
-
 
 
 
@@ -126,6 +133,7 @@ static void tranche_open_fd(void *fnp ,void *closure){
   da_push(fdap ,&fd);  
   return;
 }
+
 // takes a list of file names ,turns it into a list of file descriptors
 static void tranche_open_fds(Da *fnap ,Da *fdap){
   da_map(fnap ,tranche_open_fd ,fdap);
