@@ -13,6 +13,6 @@ ECHO= echo
 #ECHO= echo -e
 
 C=gcc
-CFLAGS=-std=gnu18 -I$(SRCDIR) -I$(INCDIR) -I$(ENVDIR)/include -ggdb -Werror -DDEBUG -DDEBUGDB 
+CFLAGS=-std=gnu18 -Werror -O0 -ggdb -DDEBUG -DDEBUGDB -I$(SRCDIR) -I$(INCDIR) -I$(ENVDIR)/include 
 LINKFLAGS=-L$(LIBDIR) -L$(ENVDIR)/lib/ -l$(MODULE) -lTM2x
 

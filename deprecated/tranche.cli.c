@@ -126,20 +126,9 @@ static inline bool is_option(char **pt){
 
 int main(int argc, char **argv, char **envp){
   int err = 0;
-  char *tdir = NULL;  
-  TM2x·AllocStatic(srcs); // srcs is a list of source file names
-
-  // where to send top level, i.e. not in a tranche, text.
-  TM2x·AllocStatic(fds);
-  { continuations fail_local ,cont;
-    int fd = STDOUT_FILENO;
-    continue_into TM2x·construct_write( fds ,&fd ,byte_n_of(int) ,&&cont ,&&fail_local);
-    fail_local:{
-      perror(NULL);
-      return TRANCHE_ERR_ALLOC_FAIL;
-    }
-    cont:{}
-  }
+  char *tdir = 0;  
+  int fd;
+  TM2x·AllocStatic(list); // list of fds
 
   // points to the array of arguments
   char **pt = argv; 
@@ -147,92 +136,89 @@ int main(int argc, char **argv, char **envp){
 
   // What to do when a source file name is found (collect it on the source file list).
   // This will be either &&init or &&extend.
-  continuation push_srcs = &&push_srcs_first; 
+  continuation push = &&push_first; 
 
-  next_arg:{
+  next:;{
     pt++;
-    if(*pt)
-      continue_from source_fname_or_option_q;
-    if( push_srcs == &&push_srcs_first )
-      continue_from process_no_sources;
-    if( err )
-      continue_from arg_errors;
+    if(*pt) continue_from source_fname_or_option_q;
+    if( push == &&push_first ) continue_from process_no_sources;
+    if( err ) continue_from arg_errors;
     continue_from process_sources;
   }
 
-  source_fname_or_option_q:{
+  source_fname_or_option_q:;{
     if( is_option(pt) ){
       process_option(&pt ,&err ,&tdir);
-      continue_from next_arg;
+      continue_from next;
     }else{
-      continue_from *push_srcs;
+      continue_from fopen;
+    }}
+
+  fopen:;{
+    fd = open(*pt ,O_WRONLY | O_APPEND | O_CREAT ,0666);
+    if( fd == -1 ){
+      perror(pt0);
+      continue_from next;
     }
+    continue_from *push;
   }
 
-  push_srcs_first:{
-    continue_into TM2x·construct_write(srcs ,pt ,byte_n_of(char *) ,&&init·nominal ,&&alloc_fail);
-      init·nominal:;
-        push_srcs = &&push_srcs_extend;
-        continue_from next_arg;
+  push_first:;{
+    push = &&push_extend;
+    continue_into TM2x·construct_write( list ,&fd ,byte_n_of(int) ,&&next ,&&fail_local);
   }
 
-  push_srcs_extend:{
-    continue_into TM2x·push(srcs ,pt ,byte_n_of(char *) ,&&next_arg ,&&alloc_fail);
-      ( srcs 
-        ,*pt 
-        ,byte_n_of(char *)
-        ,TM2xHd·pred_cstring_eq
-        ,&&next_arg
-        ,&&next_arg
-        ,&&alloc_fail
-        );
+  push_extend:;{
+    continue_into TM2x·push( list ,&fd ,byte_n_of(int) ,&&next ,&&fail_local);
   }
 
-  process_no_sources:{
+  process_no_sources:;{
     //fprintf(stderr,"sending stdin \n");
-    tranche_send(stdin ,fds ,tdir);
+    tranche_send(stdin ,fds1 ,tdir);
+    TM2x·destruct(fds1);
     return 0;
   }
 
-  process_sources:{
-    continuations fopen_src ,next_src;
+  process_sources:;{
+    continuations read ,next ,end_of_list;
     FILE *src_file;
     TM2xHd·AllocStaticRewind(srcs ,src);
 
-    fopen_src:{
-      src_file = fopen(TM2xHd·Read_Expr(src ,char*) ,"r");
+    read:;{
+      char *src_filename;
+      TM2xHd·read(src ,byte_n_of(char *) ,&src_filename);
+      src_file = fopen(src_filename ,"r");
       if(!src_file){
-        fprintf(stderr,"Could not open source file %s.\n" ,TM2xHd·Read_Expr(src ,char*));
+        fprintf(stderr,"Could not open source file %s.\n" ,src_filename);
         err |= TRANCHE_ERR_SRC_OPEN;
       }else{
-        //fprintf(stderr,"sending %s\n" ,TM2xHd·Fopen_Src_Expr(src ,char*) );
-        tranche_send(src_file ,fds ,tdir);
+        //fprintf(stderr,"sending %s\n" ,TM2xHd·Read_Expr(src ,char*) );
+        TM2x·AllocStatic(fds1);  // fds0 will become a list of open file descriptors
+        tranche_send(src_file ,fds1 ,tdir);
+        TM2x·destruct(fds1);
         if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
       }
-      continue_from next_src;;
+      continue_from next;;
     }
 
-    next_src:{
-      continue_into TM2xHd·step(srcs ,src ,byte_n_of(char *) ,&&fopen_src ,&&last);
+    next:;{
+      continue_into TM2xHd·step(srcs ,src ,byte_n_of(char *) ,&&read ,&&end_of_list);
     }
 
+    end_of_list:;{
+      TM2x·destruct(srcs);
+      return err;
+    }
   }
 
-  arg_errors:{
+  arg_errors:;{
     fprintf(stderr, "usage: %s [<src_file_path>].. [-tdir <dir>]\n", command_name);
-    continue_from last;
-  }
-
-  alloc_fail:{
-    // already out of memory? no sense in trying to print an error mess
-    err |= TRANCHE_ERR_ALLOC_FAIL;
-    continue_from last;
-  }
-
-  last:{
-    TM2x·destruct(srcs);
-    TM2x·destruct(fds);
     return err;
+  }
+
+  alloc_fail:;{
+    // already out of memory? no sense in trying to print an error mess
+    return TRANCHE_ERR_MEM;
   }
 
 }

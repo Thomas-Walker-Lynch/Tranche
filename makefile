@@ -1,4 +1,5 @@
 # tranche/makefile
+# sharing and installing are broken (this file comes from another project)
 
 SHELL=/bin/bash
 

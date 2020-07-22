@@ -1,5 +1,5 @@
 /*
-Scans a tranche and lists the named target files.
+Scans one or more tranche source files and lists all the named destination files.
 
 stdout is not explicitly named.  Would be intersting if stdout
 were also listed if anything is sent to stdout. Might distinguish

@@ -1,123 +1,231 @@
+/*
 
-#include <stdio.h>
-#include <unistd.h>
-#include <ctype.h>
-#include <string.h>
+
+*/
+
+// for open()
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <TM2xHd.h>
 
-int tranche_send(FILE *src ,char *tdir){
-  return 5;
-}
+// for isspace()
+#include <ctype.h>
+
+// for write()
+#include <unistd.h>
+
+#include <stdio.h>
+#include <TM2xHd.h>
+#include "tranche.lib.h"
+
+uint32_t TRANCHE_ERR_ARG_PARSE   = 1 << 0;
+uint32_t TRANCHE_ERR_SRC_OPEN    = 1 << 1;
+uint32_t TRANCHE_ERR_DST_OPEN    = 1 << 2;
+uint32_t TRANCHE_ERR_FCLOSE      = 1 << 3;
+uint32_t TRANCHE_ERR_HELP        = 1 << 4;
+uint32_t TRANCHE_ERR_SNAME       = 1 << 5;
+uint32_t TRANCHE_ERR_MEM         = 1 << 6;
+uint32_t TRANCHE_ERR_NO_SRCS     = 1 << 7;
+uint32_t TRANCHE_ERR_ALLOC_FAIL  = 1 << 8;
+uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
 
 
 //--------------------------------------------------------------------------------
-// parsing
-
-char sp = ' ';
-char colon = ':';
-char slash = '/';
-char newline = '\n';
-char tab = '\t';
-char terminator = 0;
-
-char tranche_begin_tag[] = "#tranche";
-char tranche_end_tag[] = "#tranche-end";
-
-bool not_blank(char *pt){
-  return !isblank(*pt);
-}
-bool is_blank(char *pt){
-  return isblank(*pt);
-}
-
-char *is(char *pt ,bool pred(char *pt) ){
-  while( *pt && pred(pt) ) pt++;
-  return pt;
-}
-
-static char *is_token(char *pt ,char *token){
-  if( strcmp(pt ,token) )
-    return pt;
-  else
-    return pt + strlen(token);
-}
-
-// parses a cstring and makes a list of file names
-//     cstring:  (blank* <filename>)*
-//     filename: non-blank+
+// functions for parsing
 //
-static continuation parse_file_list
-( TM2x *list
-  ,char *pt0
-  ,char *tdir 
-  ,continuation nominal 
-  ,continuation not_found
-  ,continuation fail
-  ){
+  #if 0
+  char sp = ' ';
+  char colon = ':';
+  char slash = '/';
+  char newline = '\n';
+  char tab = '\t';
+  #endif 
+  char terminator = 0;
 
-  char *pt1;
-  TM2x·AllocStatic(filename);
-  address_t filename_n;
-  continuation list_write = &&list_init;
-  continue_from run;
+  char tranche_begin_tag[] = "#tranche";
+  char tranche_end_tag[] = "#tranche-end";
 
-  {
-    filename_scan:;
-      struct{
-        continuation nominal;
-        continuation not_found; 
-      }filename_scan_args;
-      pt0 = is(pt0 ,is_blank);
-      pt1 = is(pt0 ,not_blank);
-      if( pt0 == pt1 ) continue_via_trampoline filename_scan_args.not_found;
-      filename_n = pt1 - pt0 - 1;
-      continue_from *filename_scan_args.nominal;
+  static inline bool not_space(char *pt){
+    return !isspace(*pt);
+  }
+  static inline bool space(char *pt){
+    return isspace(*pt);
+  }
 
-    filename_init:;
-      filename_scan_args.nominal = &&filename_rewrite;
-      continue_into TM2x·format_write_bytes(filename ,pt0 ,filename_n ,list_write ,&&fail_local);
+  static inline void skip(char **pt ,bool pred(char *pt) ){
+    while( **pt && pred(*pt) ) (*pt)++;
+  }
 
-    filename_rewrite:;
-      { __label__ nominal;
-        continue_into TM2x·resize_bytes(filename ,filename_n ,&&nominal ,&&fail_local);
-          nominal:;
-            continue_into TM2x·write_bytes(pt0 ,filename ,0 ,filename_n ,list_write ,&&fail_local ,&&fail_local ,&&fail_local);
-      }
-
-    list_init:;
-      list_write = &&list_extend;
-      filename_scan_args.not_found = nominal;
-      continue_into TM2x·format_write( list ,filename ,byte_n_of(TM2x) ,&&next ,&&fail_local);
-
-    list_extend:;
-      continue_into TM2x·push( list ,filename ,byte_n_of(TM2x) ,&&next ,&&fail_local);
-
-    next:;
-      pt0 = pt1;
-      continue_from filename_scan;
-
-    fail_local:;
-      continue_via_trampoline fail;
-
-    run:;
-      filename_scan_args.nominal = &&filename_init;
-      filename_scan_args.not_found = not_found;
-      continue_from filename_scan;
+  static inline continuation is_token(char **line_pt ,char *token ,continuation yes ,continuation no){
+    char *lpt = *line_pt;
+    while(*token && *lpt && *token == *lpt){token++; lpt++;}
+    if( *token || *lpt && not_space(lpt) ) continue_via_trampoline no;
+    *line_pt = lpt;  
+    continue_via_trampoline yes;
   }
 
 
-}
+//--------------------------------------------------------------------------------
+// given a space separated list of file names, returns an array of open file descriptors
+//
+// for error on open, prints a message and skips the file
+//
+  static continuation parse_file_list_string
+  ( TM2x *list
+    ,char *pt0
+    ,continuation nominal 
+    ,continuation not_found
+    ,continuation alloc_fail
+    ){
 
+    continuations filename_scan ,list_init ,list_extend ,next ,fail_local ,run;
+    char *pt1;
+    bool eos;
+    int fd;
+
+    struct{
+      continuation push;
+    }filename_scan·args;
+
+    first:{
+      skip(&pt0 ,space);
+      if( !*pt0 ) continue_via_trampoline not_found;
+      filename_scan·args.push = &&push_first;
+      continue_from filename_scan;
+    }
+
+    filename_scan:{
+      pt1 = pt0;
+      skip(&pt1 ,not_space);
+      eos = !*pt1;
+      *pt1 = terminator;
+      fd = open(pt0 ,O_WRONLY | O_APPEND | O_CREAT ,0666);
+      if( fd == -1 ){
+        perror(pt0);
+        continue_from next;
+      }
+      continue_from *filename_scan·args.push;
+    }
+
+    push_first:{
+      filename_scan·args.push = &&push_extend;
+      continue_into TM2x·construct_write( list ,&fd ,byte_n_of(int) ,&&next ,&&fail_local);
+    }
+
+    push_extend:{
+      continue_into TM2x·push( list ,&fd ,byte_n_of(int) ,&&next ,&&fail_local);
+    }
+
+    next:{
+      if( eos ) continue_via_trampoline nominal;
+      pt0 = pt1 + 1;
+      skip(&pt0 ,space);
+      if( !*pt0 ) continue_via_trampoline nominal;
+      continue_from filename_scan;
+    }
+
+    fail_local:{
+      continue_via_trampoline alloc_fail;
+    }
+
+
+  }
+
+//--------------------------------------------------------------------------------
+// sends source file tranches to destination files
+//
+  uint32_t tranche_send(FILE *src ,TM2x *dest_fds0 ,char *tdir){
+
+    uint32_t err = 0;
+
+    { continuations first_line ,next_line ,read_line ,parse_line ,tranche_begin ,echo_line ,finish;
+      char *line ,*pt0 ,*pt1;
+      size_t n;
+
+      first_line:{
+        if( feof(src) ) return err;
+        continue_from read_line;
+      }
+
+      next_line:{
+        free(line);
+        continue_from read_line;
+      }
+
+      read_line:{
+        line = NULL;
+        n = 0;
+        if( getline(&line ,&n ,src) == -1 ){
+          if( ferror(src) ){
+            // too bad we do not have the file name, we just have the descriptors. It
+            // would be better to wait and open a file when it is first used.
+            perror(NULL); 
+            err |= TRANCHE_ERR_ON_READ;
+          }
+          continue_from finish;
+        }
+        continue_from parse_line;
+      }
+
+      parse_line:{
+        pt0 = line;
+        skip(&pt0 ,space);
+        if( !*pt0 ) continue_from echo_line;
+        {
+          continuations cont;
+          continue_into is_token(&pt0 ,tranche_begin_tag ,&&tranche_begin ,&&cont);
+          cont:{
+            continuations cont;
+            continue_into is_token(&pt0 ,tranche_end_tag ,&&finish ,&&cont);
+            cont:{
+              continue_from echo_line;
+            }}}}
+
+      tranche_begin:{
+        continuations nominal ,destruct_dest_fds1 ,alloc_fail;
+        TM2x·AllocStatic(dest_fds1);  // will become a list of open file descriptors
+        parse_file_list_string(dest_fds1 ,pt0 ,&&nominal ,&&destruct_dest_fds1 ,&&alloc_fail);
+        nominal:{
+          tranche_send(src ,dest_fds1 ,tdir);
+          continue_from destruct_dest_fds1;
+        }
+        destruct_dest_fds1:{
+          TM2x·destruct(dest_fds1);
+          continue_from next_line;
+        }
+        alloc_fail:{
+          TM2x·destruct(dest_fds1);
+          err |= TRANCHE_ERR_ALLOC_FAIL;
+          continue_from finish;
+        }
+      }
+
+      echo_line:{
+        void write_line(void *context ,void *el ,address_t element_byte_n){
+          char *string = (char *)context;
+          int fd = *(int *)el;
+          write(fd ,string ,strlen(string));
+        }
+        TM2xHd·AllocStaticRewind(dest_fds0 ,hd);
+        TM2xHd·apply_to_each(dest_fds0 ,hd ,byte_n_of(int) ,line ,write_line);
+        continue_from next_line;
+      }
+
+      finish:{
+        free(line);
+        return err;
+      }
+
+    }
+    fprintf(stderr, "Error, reached end of tranche_send");
+    return err;
+  }
+#if 0
+
+#endif
 
 #if 0
 
-
-
-//--------------------------------------------------------------------------------
-// da_map calls
 
 // closure is a list of file descriptors.
 // fnp is a pointer to a file name.
@@ -155,43 +263,6 @@ static void tranche_puts_all(Da *fdap ,char *string){
 }
 
 //--------------------------------------------------------------------------------
-// does the work of tranching a source file
-
-int tranche_send(FILE *src ,Da *arg_fdap ,char *tdir){
-  char *pt;
-  Da line; // buffer holding the characters from a line
-  Da file_name_arr; // an array of file name parameters parsed from a #tranche line
-  Da fda; // open file descriptors corresponding to the file name parameters
-  da_alloc(&line ,sizeof(char));
-  da_alloc(&file_name_arr ,sizeof(char *));
-  da_alloc(&fda ,sizeof(int));
-
-  while( !feof(src) ){
-    da_string_input(&line ,src);
-    if( is_tranche_end(line.base) ) break;
-    pt = is_tranche_begin(line.base);
-    if(pt){ // then this line is the start of a nested tranche block
-      parse_file_list(&file_name_arr ,pt ,tdir);
-      tranche_open_fds(&file_name_arr ,&fda);
-      da_free_elements(&file_name_arr);
-      tranche_send(src ,&fda ,tdir);
-      tranche_close_fds(&fda);
-    }else{
-      da_pop(&line ,NULL); // pop the terminating zero
-      da_push(&line ,&newline);
-      da_push(&line ,&terminator);
-      tranche_puts_all(arg_fdap ,line.base);
-    }
-    da_rewind(&line);
-  }
-
-  da_free(&line);
-  da_free(&file_name_arr);
-  da_free(&fda);
-  return 0;
-}
-
-//--------------------------------------------------------------------------------
 // returns a list of unique target file names from a tranche source
 
 // make a list of the unique tranche target files found in src
@@ -206,7 +277,7 @@ int tranche_target(FILE *src ,Da *target_arrp ,char *tdir){
     if( is_tranche_end(line.base) ) break;
     pt = is_tranche_begin(line.base);
     if(pt){ // then this line is the start of a nested tranche block
-      parse_file_list(&file_name_arr ,pt ,tdir);
+      parse_file_list_string(&file_name_arr ,pt ,tdir);
       da_strings_set_union(target_arrp ,&file_name_arr ,free);
       da_rewind(&file_name_arr);
       tranche_target(src ,target_arrp ,tdir);
