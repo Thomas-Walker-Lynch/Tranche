@@ -15,10 +15,14 @@ between blank lines being sent and text being sent to stdout.
 #define ERR_ARGC 1
 #define ERR_SRC_OPEN 2
 
+typedef struct{
+  char *tdir;
+  char *sep;
+} tranche_target·context;
+
 
 int main(int argc, char **argv, char **envp){
 #if 0
-  
 
   int err = 0;
   char *sep = 0;
@@ -37,18 +41,18 @@ int main(int argc, char **argv, char **envp){
         // options that take no values:
         if(!*option){
           fprintf(stderr, "Currently there is no lone '-' option.\n");
-          err |= TRANCHE_ERR_ARG_PARSE;
+          err |= TRANCHE_ERR·ARG_PARSE;
           goto endif;
         }
         if( !strcmp(option, "h") || !strcmp(option, "help") ){
-          err |= TRANCHE_ERR_HELP; // this will force the usage message, though it will also return an error
+          err |= TRANCHE_ERR·HELP; // this will force the usage message, though it will also return an error
           goto endif;
         }
 
         // options that take one value:
         pt++; if(!*pt || **pt == '-'){
           fprintf(stderr, "Missing value for option %s.\n", option);
-          err |= TRANCHE_ERR_ARG_PARSE;
+          err |= TRANCHE_ERR·ARG_PARSE;
           if(!*pt) break; // then nothing more to parse
           goto endif;
         }
@@ -63,7 +67,7 @@ int main(int argc, char **argv, char **envp){
           goto endif;
         }
         fprintf(stderr, "Unrecognized option %s.", option);
-        err |= TRANCHE_ERR_ARG_PARSE;
+        err |= TRANCHE_ERR·ARG_PARSE;
         goto endif;
       }
       // else clause
@@ -102,10 +106,10 @@ int main(int argc, char **argv, char **envp){
       src_file = fopen(src_file_path, "r");
       if(!src_file){
         fprintf(stderr,"Could not open source file %s.\n", src_file_path);
-        err |= TRANCHE_ERR_SRC_OPEN;
+        err |= TRANCHE_ERR·SRC_OPEN;
       }else{
         tranche_target(src_file, target_arrp, tdir);
-        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
+        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR·FCLOSE;}
       }
     pt += src_arrp->element_size;
     }
@@ -115,6 +119,6 @@ int main(int argc, char **argv, char **envp){
   da_free_elements(target_arrp);
   da_free(target_arrp);
   return err;
-
 #endif
 }
+

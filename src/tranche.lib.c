@@ -18,17 +18,49 @@
 #include <TM2xHd.h>
 #include "tranche.lib.h"
 
-uint32_t TRANCHE_ERR_ARG_PARSE   = 1 << 0;
-uint32_t TRANCHE_ERR_SRC_OPEN    = 1 << 1;
-uint32_t TRANCHE_ERR_DST_OPEN    = 1 << 2;
-uint32_t TRANCHE_ERR_FCLOSE      = 1 << 3;
-uint32_t TRANCHE_ERR_HELP        = 1 << 4;
-uint32_t TRANCHE_ERR_SNAME       = 1 << 5;
-uint32_t TRANCHE_ERR_MEM         = 1 << 6;
-uint32_t TRANCHE_ERR_NO_SRCS     = 1 << 7;
-uint32_t TRANCHE_ERR_ALLOC_FAIL  = 1 << 8;
-uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
 
+//--------------------------------------------------------------------------------
+// error flags
+//
+  // bottom two bits classify the error
+  const uint32_t TRANCHE_ERR·ARG_PARSE    = 1 << 1; // cli, problems parsing command arguments
+  const uint32_t TRANCHE_ERR·NO_SRCS      = 1 << 2; // no source files specified (sometimes this condition is not an error)
+  const uint32_t TRANCHE_ERR·SRC_OPEN     = 1 << 3; // error opening file, often we just skip the file and to on to the next one
+  const uint32_t TRANCHE_ERR·DST_OPEN     = 1 << 4; // ditto, but for a destination file
+  const uint32_t TRANCHE_ERR·ON_READ      = 1 << 5; // reading of given file stops, typically continues from next file
+  const uint32_t TRANCHE_ERR·FCLOSE       = 1 << 6; // error closing a file
+  const uint32_t TRANCHE_ERR·ALLOC_FAIL   = 1 << 7; // call to malloc failed to return a memory block .. doubt we make it the end to report the error
+  const uint32_t TRANCHE_ERR·NONREPORTING = 1 << 8; // we do not want the summary at the end that says there was an error
+
+  const uint32_t TRANCHE_ERR·NONFATAL =
+    TRANCHE_ERR·SRC_OPEN
+    | TRANCHE_ERR·DST_OPEN
+    | TRANCHE_ERR·FCLOSE
+    | TRANCHE_ERR·ON_READ
+    ;
+
+  const uint32_t TRANCHE_ERR·FATAL =
+    TRANCHE_ERR·NO_SRCS
+    | TRANCHE_ERR·ALLOC_FAIL
+    | TRANCHE_ERR·NONREPORTING
+    ;
+
+  void tranche_err·perror( uint32_t err ){
+    // type
+    if( err & TRANCHE_ERR·NONREPORTING ) return;
+    if( err & TRANCHE_ERR·NONFATAL    ) fprintf(stderr, "at least one TRANCHE_ERR·NONFATAL\n");
+    if( err & TRANCHE_ERR·FATAL       ) fprintf(stderr, "at least one TRANCHE_ERR·FATAL\n");
+
+    // detail
+    if( err & TRANCHE_ERR·ARG_PARSE   ) fprintf(stderr, "TRANCHE_ERR·ARG_PARSE \n");
+    if( err & TRANCHE_ERR·SRC_OPEN    ) fprintf(stderr, "TRANCHE_ERR·SRC_OPEN  \n");
+    if( err & TRANCHE_ERR·DST_OPEN    ) fprintf(stderr, "TRANCHE_ERR·DST_OPEN  \n");
+    if( err & TRANCHE_ERR·FCLOSE      ) fprintf(stderr, "TRANCHE_ERR·FCLOSE    \n");
+    if( err & TRANCHE_ERR·NO_SRCS     ) fprintf(stderr, "TRANCHE_ERR·NO_SRCS   \n");
+    if( err & TRANCHE_ERR·ALLOC_FAIL  ) fprintf(stderr, "TRANCHE_ERR·ALLOC_FAIL\n");
+    if( err & TRANCHE_ERR·ON_READ     ) fprintf(stderr, "TRANCHE_ERR·ON_READ   \n");
+
+  }
 
 //--------------------------------------------------------------------------------
 // functions for parsing
@@ -39,7 +71,7 @@ uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
   char slash = '/';
   char newline = '\n';
   char tab = '\t';
-  #endif 
+  #endif
   char terminator = 0;
 
   char tranche_begin_tag[] = "#tranche";
@@ -60,7 +92,7 @@ uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
     char *lpt = *line_pt;
     while(*token && *lpt && *token == *lpt){token++; lpt++;}
     if( *token || *lpt && not_space(lpt) ) continue_via_trampoline no;
-    *line_pt = lpt;  
+    *line_pt = lpt;
     continue_via_trampoline yes;
   }
 
@@ -73,7 +105,7 @@ uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
   static continuation parse_file_list_string
   ( TM2x *list
     ,char *pt0
-    ,continuation nominal 
+    ,continuation nominal
     ,continuation not_found
     ,continuation alloc_fail
     ){
@@ -159,8 +191,8 @@ uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
           if( ferror(src) ){
             // too bad we do not have the file name, we just have the descriptors. It
             // would be better to wait and open a file when it is first used.
-            perror(NULL); 
-            err |= TRANCHE_ERR_ON_READ;
+            perror(NULL);
+            err |= TRANCHE_ERR·ON_READ;
           }
           continue_from finish;
         }
@@ -171,15 +203,10 @@ uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
         pt0 = line;
         skip(&pt0 ,space);
         if( !*pt0 ) continue_from echo_line;
-        {
-          continuations cont;
-          continue_into is_token(&pt0 ,tranche_begin_tag ,&&tranche_begin ,&&cont);
-          cont:{
-            continuations cont;
-            continue_into is_token(&pt0 ,tranche_end_tag ,&&finish ,&&cont);
-            cont:{
-              continue_from echo_line;
-            }}}}
+        seq0:; continue_into is_token(&pt0 ,tranche_begin_tag ,&&tranche_begin ,&&seq1);
+        seq1:; continue_into is_token(&pt0 ,tranche_end_tag   ,&&finish        ,&&seq2);
+        seq2:; continue_from echo_line;
+      }
 
       tranche_begin:{
         continuations nominal ,destruct_dest_fds1 ,alloc_fail;
@@ -195,7 +222,7 @@ uint32_t TRANCHE_ERR_ON_READ     = 1 << 9;
         }
         alloc_fail:{
           TM2x·destruct(dest_fds1);
-          err |= TRANCHE_ERR_ALLOC_FAIL;
+          err |= TRANCHE_ERR·ALLOC_FAIL;
           continue_from finish;
         }
       }
@@ -238,7 +265,7 @@ static void tranche_open_fd(void *fnp ,void *closure){
     fprintf(stderr ,"Could not open file %s\n" ,file_name);
     return;
   }
-  da_push(fdap ,&fd);  
+  da_push(fdap ,&fd);
   return;
 }
 
@@ -340,7 +367,7 @@ void tranche_make(FILE *src_file ,char *src_name ,int mfile_fd ,char *tdir){
   da_string_push(mlsp ,src_name);
   da_push(mlsp ,&newline);
   write(mfile_fd ,mlsp->base ,mlsp->end - mlsp->base);
-  
+
   // output action lines ----------------------------------------
   da_rewind(mlsp); // reuse make line buffer
   da_push(mlsp ,&tab);

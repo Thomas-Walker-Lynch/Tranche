@@ -56,11 +56,11 @@ int main(int argc, char **argv, char **envp){
         // options that take no values:
         if(!*option){
           fprintf(stderr, "Currently there is no lone '-' option.\n");
-          err |= TRANCHE_ERR_ARG_PARSE;
+          err |= TRANCHE_ERR·ARG_PARSE;
           goto next_arg;
         }
         if( !strcmp(option, "h") || !strcmp(option, "help") ){
-          err |= TRANCHE_ERR_HELP; // this will force the usage message, though it will also return an error
+          err |= TRANCHE_ERR·HELP; // this will force the usage message, though it will also return an error
           goto next_arg;
         }
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv, char **envp){
         value_pt = pt+1;
         if(!value_pt || **value_pt == '-'){
           fprintf(stderr, "Missing value for option %s.\n", option);
-          err |= TRANCHE_ERR_ARG_PARSE;
+          err |= TRANCHE_ERR·ARG_PARSE;
           if(!value_pt) break; // then nothing more to parse
           goto next_arg;
         }
@@ -88,7 +88,7 @@ int main(int argc, char **argv, char **envp){
           goto next_arg;
         }
         fprintf(stderr, "Unrecognized option %s.", option);
-        err |= TRANCHE_ERR_ARG_PARSE;
+        err |= TRANCHE_ERR·ARG_PARSE;
         goto next_arg;
       } // end if -option value clause 
       // else pt is not a -option value clause, rather it is an argument
@@ -98,7 +98,7 @@ int main(int argc, char **argv, char **envp){
     }
     if(TM2x_empty(args) && !sname){
       fprintf(stderr, "Must be given at least one source name argument or an sname option\n");
-      err |= TRANCHE_ERR_SNAME;
+      err |= TRANCHE_ERR·NO_SRCS;
     }
     if(err){
       fprintf(stderr, "usage: %s [<src_file_path>].. [-sname <sname>] [-tdir <dir>]\n", argv[0]);
@@ -116,7 +116,7 @@ int main(int argc, char **argv, char **envp){
 
     if(mfile_fd == -1){
       fprintf(stderr, "Could not open the dep file %s\n", mfile_path);
-      err |= TRANCHE_ERR_DST_OPEN;
+      err |= TRANCHE_ERR·DST_OPEN;
     }
   }
 
@@ -138,10 +138,10 @@ int main(int argc, char **argv, char **envp){
       src_file = fopen(src_file_path, "r");
       if(!src_file){
         fprintf(stderr,"Could not open source file %s.\n", src_file_path);
-        err |= TRANCHE_ERR_SRC_OPEN;
+        err |= TRANCHE_ERR·SRC_OPEN;
       }else{
         tranche_make(src_file, src_file_path,  mfile_fd, tdir);
-        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
+        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR·FCLOSE;}
       }
     pt += src_arrp->element_size;
     }
@@ -150,7 +150,7 @@ int main(int argc, char **argv, char **envp){
 
   if(mfile_fd != STDOUT_FILENO && close(mfile_fd) == -1 ){
     perror(NULL); 
-    err |= TRANCHE_ERR_FCLOSE;
+    err |= TRANCHE_ERR·FCLOSE;
   }
   return err;
 

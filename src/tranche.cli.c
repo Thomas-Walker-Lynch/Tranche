@@ -1,6 +1,6 @@
 /*
 The purpose of this tool is to facilitate putting prototypes (declarations) next
-to implementations (definitions) in a single source file of a C/C++ programs. 
+to implementations (definitions) in a single source file of C/C++ programs. 
 
 Sends code tranches from source files into one or more output files.
 
@@ -8,9 +8,9 @@ Sends code tranches from source files into one or more output files.
 
 A code tranche has the form:
 
-  #tranche-begin <output_filename> [<output_filename> ...]
+  #tranche <destination_filename> [<destination_filename> ...]
 
-The '#' is the first non-space character on the line, with one or more filenames
+The '#' is the first non-space character on the line, with one or more destination filenames
 following the tag. Upon finding such a line, copies all following lines into the
 listed files, until reaching the end marker:
 
@@ -19,8 +19,9 @@ listed files, until reaching the end marker:
 Existing files are opened for append, other files are created.  Typically the user will
 want to delete the tranche output files before running tranche a second time.
 
-.. currently tranche_send will probably mess up if the user nests a tranche to
-the same file as one already open in the containing tranche ..
+I do not know exactly what happens when a nested tranche_send has the same destination
+file as the outer tranche_send.  As the files are opened unbuffered, and for append
+maybe it would work.
 
 */
   
@@ -29,33 +30,60 @@ the same file as one already open in the containing tranche ..
 #include <stdbool.h>
 #include <string.h>
 #include <TM2xHd.h>
+#include "parse_argv.lib.h"
 #include "tranche.lib.h"
 
 /*
+Silly implementation notes that all C programmers already know:
+
 UNIX standard arguments for C:
- -> The arguments array has elements that are string pointers.  Each such element is an 'argument value'.
-    Hence argument values have type char *.
- -> An argument pointer points to an element in the arguments array. Thus 'argument pointer' has type of char **.
- -> We pass into this routine a pointer to an argument pointer.  That is because we might want to
-    increment the argument pointer to the next argument value.  This a pointer to an argument pointer
-    and has type char ***.
 
-Command line convention:
--> an option has the form  -<option_name> <value>*
-   The '-<option_name>' is a single argument value starting with the character '-'.  
-   Each successive option <value> is another argument value.
-   We know how many values there are based on the option_name.
+ -> The arguments array has elements that are string pointers.  Each such element is an
+    'argument'. Hence arguments have type char *. And the array base has type char **.
 
--> ppt passed in here is a pointer to an argument pointer. Hence, *ppt is an argument
-   pointer, and **ppt is an argument value.  ***ppt is the first character in the argument
-   value.
+ -> An argument pointer points to an element in the arguments array. Thus 'argument
+    pointer' has type of char **.
 
--> This routine is only called when ***ppt is a '-' character.  If an option has no values,
+ -> We pass into this routine a pointer to an argument pointer.  That is because we might
+    want to increment this pointer so as to walk down the array of arguments.  This a pointer to
+    an argument so it has type char ***.
+
+Tranche command line follow the usual convention:
+
+-> the first character of an option argument is a dash, this is followed by
+   the option name.  The following argument is taken as the option value:
+
+   -<option_name> <value>*
+
+   In our argument parser we allow that an option might require multiple values, but that
+   does not occur in any of the tranche programs.  We know how many values there are based
+   on the option_name.
+
+process_option arguments:
+
+-> ppt passed in here is a pointer to an argument array pointer. Hence, *ppt is an argument
+   array pointer, and **ppt is an argument.  ***ppt is the first character in the argument.
+   We pass in an a pointer to the argument array pointer so that we may change the callers
+   argument array pointer.
+
+-> process_option is only called when ***ppt is a '-' character.  If an option has no values,
    we leave with *ppt unmodified.  If an option has values, we leave with *ppt pointing at
-   the last value.
+   the last option value. In this way the next argument to be parsed will always be the 
+   start of something new.
+
+-> pointers to err and tdir are passed in here so that they may be set.
 
 */
-void process_option(char ***ppt ,int *err ,char **tdir){
+
+typedef struct{
+  char *tdir;
+  bool help;
+} tranche·context;
+
+void tranche·process_option(char ***ppt ,int *err ,void *tranche_context){
+  tranche·context *context = tranche_context;
+  context->help = false;
+  context->tdir = NULL;
 
   //--------------------
   // categorize options by type, in this case, just the number of values it takes
@@ -64,33 +92,35 @@ void process_option(char ***ppt ,int *err ,char **tdir){
     char *option_name = **ppt + 1;
     if(!*option_name){ // *option_name is the first character of the option_name
       fprintf(stderr, "Currently there is no lone '-' option.\n");
-      *err |= TRANCHE_ERR_ARG_PARSE;
+      *err |= TRANCHE_ERR·ARG_PARSE;
       return;
     }
     bool option_0 = 
-       strcmp(option_name, "h")
-       ||
-       strcmp(option_name, "help")
+       !strcmp(option_name, "h")
+       || !strcmp(option_name, "help")
+       || !strcmp(option_name, "-help")
       ;
     bool option_1 =
-       strcmp(option_name, "tdir")
+       !strcmp(option_name, "tdir")
       ;
     if( !option_0 && !option_1 ){
       fprintf(stderr, "Unrecognized option_name: '%s'.", option_name);
-      *err |= TRANCHE_ERR_ARG_PARSE;
+      *err |= TRANCHE_ERR·ARG_PARSE;
       return;
     }
      
   //--------------------
   // values
-  //    option_0 is form: -option.  option_1 is form: -option value.  No other forms for this program...
+  //    option_0 is form: -option.
+  //    option_1 is form: -option value.  
+  //    No other forms for this program...
   //
     char *value;
     if( option_1 ){
       value = *(*ppt + 1);
       if(!value || *value == '-'){
         fprintf(stderr, "Missing value for option '%s'.\n", option_name);
-        *err |= TRANCHE_ERR_ARG_PARSE;
+        *err |= TRANCHE_ERR·ARG_PARSE;
         return;
       }
     }
@@ -99,14 +129,19 @@ void process_option(char ***ppt ,int *err ,char **tdir){
   // process the option
   //
     if( option_0 ){
-      if( !strcmp(option_name, "h") || !strcmp(option_name, "help") ){
-        *err |= TRANCHE_ERR_HELP; // this will force the usage message, though it will also return an error
+      if(
+         !strcmp(option_name, "h")
+         || !strcmp(option_name, "help")
+         || !strcmp(option_name, "-help")
+         ){
+        context->help = true;
       }
+      *err |= TRANCHE_ERR·FATAL; // no specific error specified, but no processing will occur even if args are specified
       return;
     }
     if( option_1 ){
       if( !strcmp(option_name, "tdir") ){
-        *tdir = value;
+        context->tdir = value;
       }
       (*ppt)++;
       return;
@@ -114,88 +149,44 @@ void process_option(char ***ppt ,int *err ,char **tdir){
 
     // in theory at least, we can't get here
     fprintf(stderr, "Argument parsing internal error\n");
-    *err |= TRANCHE_ERR_ARG_PARSE;
+    *err |= TRANCHE_ERR·ARG_PARSE;
     return;
 
 }
 
-// anything that starts with a '-' is taken as an option, everything else is a source file name
-static inline bool is_option(char **pt){
-  return **pt == '-';
-}
-
 int main(int argc, char **argv, char **envp){
-  int err = 0;
+  int32_t err = 0;
   char *tdir = NULL;  
-  TM2x·AllocStatic(srcs); // srcs is a list of source file names
+  tranche·context context;
 
-  // where to send top level, i.e. not in a tranche, text.
+  // Destination for file scope text (before any tranch tags are discovered) defaults to standard out.
+  // Later probably should add a command line option for setting this.
   TM2x·AllocStatic(fds);
   { continuations fail_local ,cont;
     int fd = STDOUT_FILENO;
     continue_into TM2x·construct_write( fds ,&fd ,byte_n_of(int) ,&&cont ,&&fail_local);
     fail_local:{
       perror(NULL);
-      return TRANCHE_ERR_ALLOC_FAIL;
+      return TRANCHE_ERR·ALLOC_FAIL;
     }
     cont:{}
   }
 
-  // points to the array of arguments
-  char **pt = argv; 
-  char *command_name = *pt;
+  TM2x·AllocStatic(srcs); // nonoption args are source file names
 
-  // What to do when a source file name is found (collect it on the source file list).
-  // This will be either &&init or &&extend.
-  continuation push_srcs = &&push_srcs_first; 
+  continue_into parse_argv
+    ( argv 
+      ,srcs
+      ,&err
+      ,&context 
+      ,tranche·process_option
+      ,&&tranche_sources
+      ,&&tranche_no_sources
+      ,&&no_tranche
+      );
 
-  next_arg:{
-    pt++;
-    if(*pt)
-      continue_from source_fname_or_option_q;
-    if( push_srcs == &&push_srcs_first )
-      continue_from process_no_sources;
-    if( err )
-      continue_from arg_errors;
-    continue_from process_sources;
-  }
-
-  source_fname_or_option_q:{
-    if( is_option(pt) ){
-      process_option(&pt ,&err ,&tdir);
-      continue_from next_arg;
-    }else{
-      continue_from *push_srcs;
-    }
-  }
-
-  push_srcs_first:{
-    continue_into TM2x·construct_write(srcs ,pt ,byte_n_of(char *) ,&&init·nominal ,&&alloc_fail);
-      init·nominal:;
-        push_srcs = &&push_srcs_extend;
-        continue_from next_arg;
-  }
-
-  push_srcs_extend:{
-    continue_into TM2x·push(srcs ,pt ,byte_n_of(char *) ,&&next_arg ,&&alloc_fail);
-      ( srcs 
-        ,*pt 
-        ,byte_n_of(char *)
-        ,TM2xHd·pred_cstring_eq
-        ,&&next_arg
-        ,&&next_arg
-        ,&&alloc_fail
-        );
-  }
-
-  process_no_sources:{
-    //fprintf(stderr,"sending stdin \n");
-    tranche_send(stdin ,fds ,tdir);
-    return 0;
-  }
-
-  process_sources:{
-    continuations fopen_src ,next_src;
+  tranche_sources:{
+    continuations fopen_src ,next_src ,fatal_error ,finish_tranche_sources;
     FILE *src_file;
     TM2xHd·AllocStaticRewind(srcs ,src);
 
@@ -203,36 +194,42 @@ int main(int argc, char **argv, char **envp){
       src_file = fopen(TM2xHd·Read_Expr(src ,char*) ,"r");
       if(!src_file){
         fprintf(stderr,"Could not open source file %s.\n" ,TM2xHd·Read_Expr(src ,char*));
-        err |= TRANCHE_ERR_SRC_OPEN;
+        err |= TRANCHE_ERR·SRC_OPEN;
       }else{
         //fprintf(stderr,"sending %s\n" ,TM2xHd·Fopen_Src_Expr(src ,char*) );
         tranche_send(src_file ,fds ,tdir);
-        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR_FCLOSE;}
+        if( fclose(src_file) == -1 ){perror(NULL); err |= TRANCHE_ERR·FCLOSE;}
       }
       continue_from next_src;;
     }
 
     next_src:{
-      continue_into TM2xHd·step(srcs ,src ,byte_n_of(char *) ,&&fopen_src ,&&last);
+      continue_into TM2xHd·step(srcs ,src ,byte_n_of(char *) ,&&fopen_src ,&&finish_tranche_sources);
     }
 
+    finish_tranche_sources:{
+      TM2x·destruct(srcs);
+      continue_from finish;
+    }
   }
 
-  arg_errors:{
-    fprintf(stderr, "usage: %s [<src_file_path>].. [-tdir <dir>]\n", command_name);
-    continue_from last;
+  tranche_no_sources:{
+    tranche_send(stdin ,fds ,tdir);
+    continue_from finish;
   }
 
-  alloc_fail:{
-    // already out of memory? no sense in trying to print an error mess
-    err |= TRANCHE_ERR_ALLOC_FAIL;
-    continue_from last;
+  no_tranche:{
+    if( context.help ){
+      fprintf(stderr, "usage: %s [<src_file_path>].. [-tdir <dir>]\n", argv[0]);
+    }
+    continue_from finish;
   }
 
-  last:{
-    TM2x·destruct(srcs);
+  finish:{
+    if( err ) tranche_err·perror(err);
     TM2x·destruct(fds);
     return err;
   }
 
 }
+
